@@ -15,7 +15,7 @@ A smart, CLI-based system utility designed to prevent "death by AFK" in games wh
 
 ## 🛠️ How to Use
 
-1.  Run `AutoPauseCLI.exe` as **Administrator**.
+1.  Run `AutoPauseCLI.exe` as **Administrator**. 
 2.  Select a category (e.g., `[2] USB Peripherals`).
 3.  **Option A:** Select a specific device from the list.
 4.  **Option B:** Use `[L]` to learn a new device if yours is hidden/generic.
