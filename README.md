@@ -1,28 +1,74 @@
-# AutoPause Monitor Guard 🛡️ (v11.0)
 
-A smart, CLI-based system utility designed to prevent "death by AFK" in games when a hardware disconnection occurs (Monitor, USB, COM).
+# AutoPause Monitor Guard — Smart Pause for Disconnections 🛡️🎮
 
-## 🚀 Key Features
+AutoPause Monitor Guard is a lightweight, CLI utility that automatically sends an `ESC` keypress when a tracked device disconnects (monitor, USB peripheral, or COM device). It’s designed to help pause games or applications instantly when a hardware failure or disconnect occurs.
 
-* **Smart Monitor Guard:** Uses advanced WMI events (`WmiMonitorConnectionEvent`) to detect signal loss on primary monitors instantly.
-* **Contextual Learning Mode `[L]`:** * Don't see your device on the list? Just press `L`.
-    * Disconnect the device, and the tool captures its unique **Hardware ID**.
-    * Saves it as a "My Device" shortcut for 100% precision (ignoring generic names).
-* **Clean UI:** Automatically filters out system "junk" (Hubs, Virtual controllers) to show only real peripherals.
-* **Safe Navigation:** * `F1`: Return to Main Menu.
-    * `Backspace`: Go back one step.
-* **Zero-Latency Action:** Instantly injects an `ESC` key press via WinAPI upon disconnection.
+This release supports both fast WMI-based detection (when available) and a non-privileged polling fallback so the tool can run without Administrator rights in most environments.
 
-## 🛠️ How to Use
+## Quick Start 🚀
 
-1.  Run `AutoPauseCLI.exe` as **Administrator**. 
-2.  Select a category (e.g., `[2] USB Peripherals`).
-3.  **Option A:** Select a specific device from the list.
-4.  **Option B:** Use `[L]` to learn a new device if yours is hidden/generic.
-5.  **Option C:** Select `[A]` to monitor ALL devices in that category.
-6.  The tool runs in the background. Press `F1` or `Backspace` to stop.
+1. Open PowerShell and change to the project folder:
 
-## 📦 Build
+```powershell
+cd "C:\Users\poz-6\Desktop\AutoPause-CLI"
+```
 
-```bash
-csc Program.cs /r:System.Management.dll /win32manifest:app.manifest
+2. Build and run (pick one of the options below).
+
+## Build & Run 🧰
+
+Option A — .NET SDK (recommended; works as non-admin):
+
+```powershell
+dotnet new console --framework net6.0 --force
+del Program.cs
+dotnet add package System.Management
+# Make sure Autopauser.cs is in this folder
+dotnet run
+```
+
+Option B — csc (older .NET Framework compiler):
+
+```powershell
+"C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe" Autopauser.cs /r:System.Management.dll /out:AutoPauseCLI.exe
+.\AutoPauseCLI.exe
+```
+
+If `csc` is not in your PATH, use the full path shown above. If you don’t have the .NET SDK, download it from https://dotnet.microsoft.com.
+
+## Usage — what to press 🎛️
+
+- Main menu:
+	- `1` — Monitors (HDMI / DP)
+	- `2` — USB Peripherals / HID
+	- `3` — COM Ports
+	- `0` — Exit
+- In category view:
+	- `A` — Listen to ALL devices (Auto Mode)
+	- `L` — Learning Mode (press ENTER, then disconnect device)
+	- Choose a numbered device to monitor
+	- `Backspace` — Back
+	- `F1` — Stop and return to Main Menu
+
+The program listens for disconnection events and sends an `ESC` to help pause or exit the active application.
+
+## Permissions & Behavior ⚙️
+
+- WMI events (e.g. `WmiMonitorConnectionEvent`) provide the fastest detection but may require Administrator privileges on some systems.
+- If WMI subscription fails (no privileges), the program automatically falls back to polling the device list every ~1s; this works as a normal user but may be slightly slower.
+
+## Troubleshooting 🩺
+
+- `csc` not recognized: use the full path to `csc.exe` (see examples) or install the .NET SDK and use `dotnet run`.
+- Build errors: copy the full compiler output and paste it here — I’ll help fix it.
+
+## Want me to do more? 🤝
+
+- I can generate a proper `dotnet` project (`.csproj`) and include `Autopauser.cs` so `dotnet run` works out of the box.
+- I can also add optional logging, a small config file, or remove/adjust the manifest if it causes build issues.
+
+If you want any of the above, tell me which and I’ll set it up.
+
+---
+
+Original author: Tomalson

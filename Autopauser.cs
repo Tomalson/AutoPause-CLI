@@ -4,6 +4,7 @@ using System.Linq;
 using System.Management;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 /*
     === AutoPause CLI Tool v1.0 (Release) ===
@@ -33,7 +34,20 @@ namespace AutoPauseCLI
     {
         private static bool _isRunning = true;
         private static ManagementEventWatcher _watcher;
+        private static CancellationTokenSource _pollingCts;
         private static List<SavedDevice> _myDevices = new List<SavedDevice>();
+
+        private static readonly string[] junkKeywords = {
+                    "Root Hub", "Concentrator", "Host Controller", "PCI", "eXtensible",
+                    "Policy Controller", "Virtual", "System", "Processor", "Motherboard", "ACPI",
+                    "Print", "Volume", "Manager", "Bus", "Direct Memory Access", "Controller",
+                    "VHF", "HID Structures",
+                    "USB Input Device", "USB Composite Device",
+                    "HID-compliant system controller", "HID-compliant vendor-defined device",
+                    "HID-compliant device", "HID-compliant mouse", "HID Keyboard Device",
+                    "Service", "Gateway", "Protocol", "Transport", "Enumerator",
+                    "Avrcp", "A2DP", "Hands-Free", "HFP", "SNK", "Network", "SMS/MMS"
+                };
 
         // --- WinAPI Imports ---
         [DllImport("user32.dll", SetLastError = true)]
@@ -141,8 +155,8 @@ namespace AutoPauseCLI
                     StartListening($"{categoryName} (Auto)", classGuid, null, useUsbFilter, trySmartMonitor, false);
                     // Returns here after stopping listening
                 }
-                else if (int.TryParse(input, out int selection) && selection > 0 && selection < optionIndex)
-                {
+                else { int selection; if (int.TryParse(input, out selection) && selection > 0 && selection < optionIndex)
+                    {
                     if (selection <= categorySavedDevices.Count)
                     {
                         // Saved Device -> ID Mode
@@ -156,6 +170,7 @@ namespace AutoPauseCLI
                         string selectedName = detectedDevices[detectedIndex];
                         StartListening(selectedName, classGuid, selectedName, useUsbFilter, false, false);
                     }
+                }
                 }
             }
         }
@@ -173,17 +188,6 @@ namespace AutoPauseCLI
 
                 ManagementObjectSearcher searcher = new ManagementObjectSearcher(query);
 
-                string[] junkKeywords = {
-                    "Root Hub", "Concentrator", "Host Controller", "PCI", "eXtensible",
-                    "Policy Controller", "Virtual", "System", "Processor", "Motherboard", "ACPI",
-                    "Print", "Volume", "Manager", "Bus", "Direct Memory Access", "Controller",
-                    "VHF", "HID Structures",
-                    "USB Input Device", "USB Composite Device",
-                    "HID-compliant system controller", "HID-compliant vendor-defined device",
-                    "HID-compliant device", "HID-compliant mouse", "HID Keyboard Device",
-                    "Service", "Gateway", "Protocol", "Transport", "Enumerator",
-                    "Avrcp", "A2DP", "Hands-Free", "HFP", "SNK", "Network", "SMS/MMS"
-                };
 
                 foreach (ManagementObject obj in searcher.Get())
                 {
@@ -353,11 +357,13 @@ namespace AutoPauseCLI
                     _watcher.EventArrived += (s, e) => HandlePnPEvent(s, e, filterValue, isUnifiedUsbMode, useIdFilter);
                     _watcher.Start();
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    Console.WriteLine($"Error: {ex.Message}");
-                    Console.ReadKey();
-                    return NavAction.Back;
+                    // If WMI event subscription fails (often due to permissions), fall back to polling
+                    Console.WriteLine("WMI event subscription unavailable — falling back to polling (non-admin mode).");
+                    _pollingCts = new CancellationTokenSource();
+                    var token = _pollingCts.Token;
+                    Task.Run(() => PollForDisconnections(classGuid, filterValue, isUnifiedUsbMode, useIdFilter, token), token);
                 }
             }
 
@@ -373,16 +379,106 @@ namespace AutoPauseCLI
                     if (key == ConsoleKey.Backspace)
                     {
                         if (_watcher != null) { _watcher.Stop(); _watcher.Dispose(); _watcher = null; }
+                        if (_pollingCts != null) { _pollingCts.Cancel(); _pollingCts.Dispose(); _pollingCts = null; }
                         return NavAction.Back;
                     }
                     if (key == ConsoleKey.F1)
                     {
                         if (_watcher != null) { _watcher.Stop(); _watcher.Dispose(); _watcher = null; }
+                        if (_pollingCts != null) { _pollingCts.Cancel(); _pollingCts.Dispose(); _pollingCts = null; }
                         return NavAction.GoToMain;
                     }
                 }
                 Thread.Sleep(100);
             }
+        }
+
+        static void PollForDisconnections(string classGuid, string filterValue, bool isUnifiedMode, bool useIdFilter, CancellationToken token)
+        {
+            try
+            {
+                var previous = GetPnPDeviceMap(classGuid, isUnifiedMode);
+                while (!token.IsCancellationRequested)
+                {
+                    var current = GetPnPDeviceMap(classGuid, isUnifiedMode);
+
+                    // find removed devices
+                    foreach (var kvp in previous)
+                    {
+                        if (token.IsCancellationRequested) break;
+                        if (!current.ContainsKey(kvp.Key))
+                        {
+                            string name = kvp.Value ?? "Unknown";
+
+                            if (useIdFilter)
+                            {
+                                if (kvp.Key.Equals(filterValue, StringComparison.OrdinalIgnoreCase)) TriggerAction($"{name} (My Device)");
+                            }
+                            else if (isUnifiedMode)
+                            {
+                                if (kvp.Key.IndexOf("USB", StringComparison.OrdinalIgnoreCase) >= 0 || kvp.Key.IndexOf("HID", StringComparison.OrdinalIgnoreCase) >= 0)
+                                    TriggerAction(name);
+                            }
+                            else if (!string.IsNullOrEmpty(filterValue))
+                            {
+                                if (name.Trim().Equals(filterValue.Trim(), StringComparison.OrdinalIgnoreCase)) TriggerAction(name);
+                            }
+                            else
+                            {
+                                TriggerAction(name);
+                            }
+                        }
+                    }
+
+                    previous = current;
+                    try { Task.Delay(1000, token).Wait(); } catch { break; }
+                }
+            }
+            catch { }
+        }
+
+        static Dictionary<string, string> GetPnPDeviceMap(string classGuid, bool useUsbFilter)
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                string query;
+                if (useUsbFilter)
+                    query = "SELECT Caption, DeviceID FROM Win32_PnPEntity WHERE ConfigManagerErrorCode = 0";
+                else
+                    query = $"SELECT Caption, DeviceID FROM Win32_PnPEntity WHERE ClassGuid = '{classGuid}' AND ConfigManagerErrorCode = 0";
+
+                ManagementObjectSearcher searcher = new ManagementObjectSearcher(query);
+
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    string name = obj["Caption"]?.ToString();
+                    string id = obj["DeviceID"]?.ToString();
+
+                    if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(id))
+                    {
+                        bool isRelevant = !useUsbFilter;
+                        if (useUsbFilter)
+                        {
+                            if (id.IndexOf("USB", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("HID", StringComparison.OrdinalIgnoreCase) >= 0) isRelevant = true;
+                            if (id.StartsWith("BTH", StringComparison.OrdinalIgnoreCase)) isRelevant = false;
+                            if (id.StartsWith("SW", StringComparison.OrdinalIgnoreCase)) isRelevant = false;
+                        }
+
+                        if (isRelevant)
+                        {
+                            bool isJunk = false;
+                            foreach (string junk in junkKeywords)
+                            {
+                                if (name.IndexOf(junk, StringComparison.OrdinalIgnoreCase) >= 0) { isJunk = true; break; }
+                            }
+                            if (!isJunk) map[id] = name;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return map;
         }
 
         private static DateTime _lastTrigger = DateTime.MinValue;
