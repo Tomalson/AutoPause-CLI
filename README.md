@@ -30,11 +30,23 @@ dotnet run
 Option B — csc (older .NET Framework compiler):
 
 ```powershell
-"C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe" Autopauser.cs /r:System.Management.dll /out:AutoPauseCLI.exe
-.\AutoPauseCLI.exe
+csc Autopauser.cs /r:System.Management.dll
 ```
 
 If `csc` is not in your PATH, use the full path shown above. If you don’t have the .NET SDK, download it from https://dotnet.microsoft.com.
+
+Optional — Build EXE that requests Administrator (UAC) 🔒
+
+If you'd like the produced executable to request Administrator privileges on launch (trigger UAC), include the application manifest during compilation. This is useful when you want the WMI-based Smart Monitor Guard to run with elevated rights.
+
+```powershell
+csc Autopauser.cs /r:System.Management.dll /win32manifest:app.manifest 
+```
+
+Notes:
+- The file `app.manifest` must be present in the project folder and should contain a `requestedExecutionLevel` entry set to `requireAdministrator` to force elevation.
+- Using a manifest will make Windows prompt for elevation (UAC) when the user runs the EXE.
+- If you prefer not to force elevation, remove the `/win32manifest` flag or set `requestedExecutionLevel` to `asInvoker` in the manifest.
 
 ## Usage — what to press 🎛️
 
