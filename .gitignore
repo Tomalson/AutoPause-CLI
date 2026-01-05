@@ -1,0 +1,39 @@
+# Binaries
+*.dll
+*.exe
+*.pdb
+
+# Build outputs
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# NuGet
+packages/
+*.nupkg
+
+# Temporary files
+*.tmp
+*.temp
+
+# Visual Studio Code
+.vscode/settings.json
+.vscode/launch.json
+
+# Other
+*.swp
+*.bak
