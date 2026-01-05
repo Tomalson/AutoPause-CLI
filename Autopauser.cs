@@ -20,7 +20,7 @@ using System.Threading.Tasks;
 
 namespace AutoPauseCLI
 {
-    // Navigation actions to control the flow
+    // Navigation actions to control the flow between menus
     enum NavAction { Stay, Back, GoToMain }
 
     class SavedDevice
