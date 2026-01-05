@@ -37,3 +37,6 @@ packages/
 # Other
 *.swp
 *.bak
+*.old
+*.orig
+*.rej
